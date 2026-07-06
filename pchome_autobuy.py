@@ -214,7 +214,22 @@ def init_driver(chrome_path=""):
     if chrome_path:
         options.add_argument(f"--user-data-dir={chrome_path}")  
 
-    driver = uc.Chrome(options=options)
+    try:
+        driver = uc.Chrome(options=options)
+    except Exception as e:
+        import re
+        match = re.search(r"Current browser version is (\d+)", str(e))
+        if match:
+            version_main = int(match.group(1))
+            print(f"-> 偵測到您的 Chrome 版本為 {version_main}，自動修正啟動...")
+            
+            options2 = webdriver.ChromeOptions()
+            if chrome_path:
+                options2.add_argument(f"--user-data-dir={chrome_path}")
+            
+            driver = uc.Chrome(options=options2, version_main=version_main)
+        else:
+            raise e
     driver.set_page_load_timeout(120)
     print("-> 正在開啟 PChome 首頁，請在瀏覽器中【手動完成登入】...")
     driver.get("https://24h.pchome.com.tw/")
