@@ -5,6 +5,7 @@ import os
 import re
 import json
 import time
+import random
 import requests
 import undetected_chromedriver as uc
 
@@ -100,9 +101,65 @@ xpaths = {
     # 'warning_msg': "//a[@id='warning-timelimit_btn_confirm']",  # 之後可能會有變動
 }
 
+def select_random_specs():
+    """
+    若商品有規格選項（顏色、尺寸等），隨機選擇一個可用的規格
+    """
+    try:
+        # 等待主要購買區按鈕載入
+        WebDriverWait(driver, 5).until(
+            expected_conditions.presence_of_element_located((By.XPATH, xpaths['add_to_cart']))
+        )
+        spec_group_xpaths = [
+            "//ul[@data-regression='normal_specItems']",
+            "//div[contains(@class, 'c-detailCol__spec')]//ul"
+        ]
+        selected_xpath = None
+        for sx in spec_group_xpaths:
+            if driver.find_elements(By.XPATH, sx):
+                selected_xpath = sx
+                break
+
+        if not selected_xpath:
+            return
+
+        total_groups = len(driver.find_elements(By.XPATH, selected_xpath))
+        for group_idx in range(total_groups):
+            groups = driver.find_elements(By.XPATH, selected_xpath)
+            if group_idx >= len(groups):
+                break
+            group = groups[group_idx]
+
+            buttons = group.find_elements(By.XPATH, ".//button[not(@disabled)]")
+            available_buttons = []
+            for btn in buttons:
+                btn_class = btn.get_attribute("class") or ""
+                btn_inner = btn.get_attribute("innerHTML") or ""
+                if "is-disabled" not in btn_class and "is-disabled" not in btn_inner:
+                    available_buttons.append(btn)
+
+            if available_buttons:
+                chosen = random.choice(available_buttons)
+                chosen_text = chosen.text.strip()
+                if not chosen_text:
+                    try:
+                        chosen_text = chosen.find_element(By.XPATH, ".//span").text.strip()
+                    except Exception:
+                        chosen_text = "未命名規格"
+                print(f"-> 偵測到規格選項（第 {group_idx + 1} 組），隨機選取規格：【{chosen_text}】")
+                driver.execute_script("arguments[0].click();", chosen)
+                time.sleep(0.5)
+    except Exception as e:
+        print(f"-> 規格選取檢查略過：{e}")
+
 def main():
     print("-> 準備前往商品頁面...")
     driver.get(URL)
+
+    """
+    若有規格選項，隨機選取一個可用規格
+    """
+    select_random_specs()
 
     """
     放入購物車
