@@ -24,9 +24,9 @@
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 16px;
-            padding: 40px 30px;
+            padding: 35px 30px;
             width: 100%;
-            max-width: 450px;
+            max-width: 520px;
             box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
         }
 
@@ -34,35 +34,95 @@
             text-align: center;
             font-weight: 800;
             margin-top: 0;
-            margin-bottom: 30px;
+            margin-bottom: 24px;
             color: #fca311;
             text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            font-size: 1.8rem;
+        }
+
+        /* 模式切換按鈕組 */
+        .tab-bar {
+            display: flex;
+            background: rgba(0, 0, 0, 0.35);
+            border-radius: 10px;
+            padding: 4px;
+            margin-bottom: 24px;
+            gap: 4px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 10px 12px;
+            border: none;
+            background: transparent;
+            color: #aaa;
+            font-size: 0.92rem;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            text-align: center;
+            margin-bottom: 0;
+        }
+
+        .tab-btn.active {
+            background: #fca311;
+            color: #14213d;
+            box-shadow: 0 2px 8px rgba(252, 163, 17, 0.3);
+        }
+
+        .tab-btn:hover:not(.active) {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .tab-panel {
+            display: none;
+        }
+
+        .tab-panel.active {
+            display: block;
         }
 
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 18px;
         }
 
         label {
             display: block;
             margin-bottom: 8px;
             font-size: 0.9rem;
-            color: #ccc;
+            color: #ddd;
+            font-weight: 600;
         }
 
-        input {
+        .tip-text {
+            font-size: 0.8rem;
+            color: #9ca3af;
+            margin-top: 6px;
+            line-height: 1.4;
+        }
+
+        input, textarea {
             width: 100%;
             padding: 12px;
             border-radius: 8px;
             border: 1px solid rgba(255,255,255,0.2);
-            background: rgba(0,0,0,0.2);
+            background: rgba(0,0,0,0.25);
             color: #fff;
-            font-size: 1rem;
+            font-size: 0.95rem;
             box-sizing: border-box;
             transition: all 0.3s ease;
+            font-family: inherit;
         }
 
-        input:focus {
+        textarea {
+            resize: vertical;
+            min-height: 75px;
+            line-height: 1.5;
+        }
+
+        input:focus, textarea:focus {
             outline: none;
             border-color: #fca311;
             box-shadow: 0 0 8px rgba(252, 163, 17, 0.4);
@@ -70,10 +130,10 @@
 
         button {
             width: 100%;
-            padding: 14px;
+            padding: 13px;
             border: none;
             border-radius: 8px;
-            font-size: 1rem;
+            font-size: 0.98rem;
             font-weight: 600;
             cursor: pointer;
             margin-bottom: 12px;
@@ -82,6 +142,17 @@
 
         button:active:not(:disabled) {
             transform: scale(0.98);
+        }
+
+        .btn-browser {
+            background: #3b82f6;
+            color: #ffffff;
+            margin-bottom: 20px;
+        }
+
+        .btn-browser:hover:not(:disabled) {
+            background: #2563eb;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
         }
 
         .btn-primary {
@@ -95,17 +166,17 @@
         }
 
         .btn-success {
-            background: #4ade80;
-            color: #064e3b;
+            background: #10b981;
+            color: #ffffff;
         }
 
         .btn-success:hover:not(:disabled) {
-            background: #22c55e;
-            box-shadow: 0 4px 15px rgba(34, 197, 94, 0.4);
+            background: #059669;
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
         }
 
         .btn-danger {
-            background: rgba(239, 68, 68, 0.2);
+            background: rgba(239, 68, 68, 0.15);
             color: #ef4444;
             border: 1px solid rgba(239, 68, 68, 0.4);
         }
@@ -118,7 +189,7 @@
 
         button:disabled {
             background: rgba(255, 255, 255, 0.1) !important;
-            color: #666 !important;
+            color: #777 !important;
             cursor: not-allowed;
             border: none !important;
         }
@@ -126,38 +197,74 @@
         .status-box {
             background: rgba(0,0,0,0.3);
             border-radius: 8px;
-            padding: 15px;
-            margin-top: 20px;
+            padding: 14px;
+            margin-top: 18px;
             text-align: center;
-            font-size: 0.95rem;
+            font-size: 0.92rem;
             min-height: 24px;
             color: #60a5fa;
             font-weight: 600;
+            line-height: 1.4;
+            word-break: break-all;
         }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>PChome 搶購小幫手</h1>
-    
-    <div class="form-group">
-        <label for="url">商品網址</label>
-        <input type="text" id="url" placeholder="https://24h.pchome.com.tw/prod/..." value="{{ url }}">
+    <h1>🛒 PChome 搶購小幫手</h1>
+
+    <!-- 步驟一：全域瀏覽器登入 -->
+    <button id="btn-browser" class="btn-browser" onclick="openBrowser()">步驟一：開啟專用瀏覽器並完成登入</button>
+
+    <!-- 模式切換頁籤 -->
+    <div class="tab-bar">
+        <button id="tab-btn-multi" class="tab-btn active" onclick="switchTab('multi')">以 Prod ID 加入複數商品</button>
+        <button id="tab-btn-schedule" class="tab-btn" onclick="switchTab('schedule')">單品開賣排程搶購</button>
     </div>
-    
-    <div class="form-group">
-        <label for="time">開賣時間 (HH:MM:SS)</label>
-        <input type="text" id="time" placeholder="12:00:00" value="{{ time }}" style="text-align: center; font-size: 1.2rem; letter-spacing: 2px;">
+
+    <!-- 模式一：以 Prod ID 加入複數商品（快速結帳） -->
+    <div id="panel-multi" class="tab-panel active">
+        <div class="form-group">
+            <label for="prod_ids">商品編號清單（Prod ID）</label>
+            <textarea id="prod_ids" placeholder="例如：DGBH1H-A900XXXXX;DDADP3-A900YYYYY;DCAE3L-A900ZZZZZ">{{ multi_prod_ids }}</textarea>
+            <div class="tip-text">
+                💡 <strong>一個輸入框以分號「;」分隔</strong>多個商品編號（亦支援全形「；」或換行）。
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label for="multi_time">開賣時間 (HH:MM:SS)</label>
+            <input type="text" id="multi_time" placeholder="12:00:00" value="{{ multi_time }}" style="text-align: center; font-size: 1.15rem; letter-spacing: 2px;">
+            <div class="tip-text">
+                🕒 <strong>指定時間到達後，高頻監聽 API 確認商品已開賣（ForSale），確認開賣才依序加車並快速結帳！</strong><br>
+                （若留空則立即確認開賣並結帳）
+            </div>
+        </div>
+        <button id="btn-multi-checkout" class="btn-success" onclick="startMultiCheckout()" disabled>步驟二：時間到確認開賣並快速結帳</button>
     </div>
-    
-    <button id="btn-browser" class="btn-primary" onclick="openBrowser()">步驟一：開啟瀏覽器並登入</button>
-    <button id="btn-schedule" class="btn-success" onclick="startSchedule()" disabled>步驟二：開始定時搶購</button>
-    
-    <div style="margin-top: 30px;">
-        <button class="btn-danger" onclick="closeApp()">關閉整個程式</button>
+
+    <!-- 模式二：單品開賣排程搶購 -->
+    <div id="panel-schedule" class="tab-panel">
+        <div class="form-group">
+            <label for="url">商品網址 或 Prod ID</label>
+            <input type="text" id="url" placeholder="https://24h.pchome.com.tw/prod/... 或 Prod ID" value="{{ url }}">
+        </div>
+        
+        <div class="form-group">
+            <label for="time">開賣時間 (HH:MM:SS)</label>
+            <input type="text" id="time" placeholder="12:00:00" value="{{ time }}" style="text-align: center; font-size: 1.15rem; letter-spacing: 2px;">
+            <div class="tip-text">
+                💡 時間到達後將高頻輪詢 PChome 開賣 API，開賣瞬間自動加購物車並結帳。
+            </div>
+        </div>
+        <button id="btn-schedule" class="btn-primary" onclick="startSchedule()" disabled>步驟二：開始定時排程搶購</button>
     </div>
-    
+
+    <div style="margin-top: 20px;">
+        <button class="btn-danger" onclick="closeApp()">關閉整個搶購程式</button>
+    </div>
+
     <div class="status-box" id="status-text">
         尚未啟動
     </div>
@@ -165,6 +272,30 @@
 
 <script>
     let pollInterval = null;
+    let currentMode = "{{ mode or 'multi' }}";
+
+    function switchTab(mode) {
+        currentMode = mode;
+        const tabMulti = document.getElementById('tab-btn-multi');
+        const tabSchedule = document.getElementById('tab-btn-schedule');
+        const panelMulti = document.getElementById('panel-multi');
+        const panelSchedule = document.getElementById('panel-schedule');
+
+        if (mode === 'multi') {
+            tabMulti.classList.add('active');
+            tabSchedule.classList.remove('active');
+            panelMulti.classList.add('active');
+            panelSchedule.classList.remove('active');
+        } else {
+            tabSchedule.classList.add('active');
+            tabMulti.classList.remove('active');
+            panelSchedule.classList.add('active');
+            panelMulti.classList.remove('active');
+        }
+    }
+
+    // 初始化選取記錄的模式
+    switchTab(currentMode);
 
     function startPolling() {
         if (!pollInterval) {
@@ -181,24 +312,29 @@
             
             const btnBrowser = document.getElementById('btn-browser');
             const btnSchedule = document.getElementById('btn-schedule');
+            const btnMulti = document.getElementById('btn-multi-checkout');
             
             if (data.is_browser_open) {
                 btnBrowser.disabled = true;
-                btnBrowser.innerText = "瀏覽器已開啟";
+                btnBrowser.innerText = "專用瀏覽器已開啟（請確認已完成登入）";
                 if (!data.is_scheduling) {
                     btnSchedule.disabled = false;
+                    btnSchedule.innerText = "步驟二：開始定時排程搶購";
+                    btnMulti.disabled = false;
+                    btnMulti.innerText = "步驟二：時間到確認開賣並快速結帳";
                 }
             } else {
                 btnBrowser.disabled = false;
-                btnBrowser.innerText = "步驟一：開啟瀏覽器並登入";
+                btnBrowser.innerText = "步驟一：開啟專用瀏覽器並完成登入";
                 btnSchedule.disabled = true;
+                btnMulti.disabled = true;
             }
 
             if (data.is_scheduling) {
                 btnSchedule.disabled = true;
-                btnSchedule.innerText = "排程進行中";
-            } else if (data.is_browser_open) {
-                btnSchedule.innerText = "步驟二：開始定時搶購";
+                btnSchedule.innerText = "處理進行中...";
+                btnMulti.disabled = true;
+                btnMulti.innerText = "處理進行中...";
             }
 
         } catch (e) {
@@ -208,7 +344,7 @@
     }
 
     async function openBrowser() {
-        document.getElementById('status-text').innerText = "請求中";
+        document.getElementById('status-text').innerText = "正在啟動 Chrome 瀏覽器...";
         document.getElementById('btn-browser').disabled = true;
         try {
             const res = await fetch('/api/open_browser', { method: 'POST' });
@@ -219,15 +355,47 @@
             }
             startPolling();
         } catch (e) {
-            alert('請求失敗');
+            alert('開啟瀏覽器請求失敗');
             document.getElementById('btn-browser').disabled = false;
         }
     }
 
-    async function startSchedule() {
-        const url = document.getElementById('url').value;
-        const time = document.getElementById('time').value;
+    async function startMultiCheckout() {
+        const prod_ids = document.getElementById('prod_ids').value.trim();
+        const time = document.getElementById('multi_time').value.trim();
+        if (!prod_ids) {
+            alert('請輸入商品 ID（以分號分隔）！');
+            return;
+        }
+
+        document.getElementById('btn-multi-checkout').disabled = true;
         
+        try {
+            const res = await fetch('/api/start_multi_checkout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prod_ids, time })
+            });
+            const data = await res.json();
+            if (!data.success) {
+                alert(data.message);
+                document.getElementById('btn-multi-checkout').disabled = false;
+            }
+        } catch (e) {
+            alert('啟動快速結帳失敗！');
+            document.getElementById('btn-multi-checkout').disabled = false;
+        }
+    }
+
+    async function startSchedule() {
+        const url = document.getElementById('url').value.trim();
+        const time = document.getElementById('time').value.trim();
+        
+        if (!url) {
+            alert('請輸入商品網址或商品 ID！');
+            return;
+        }
+
         document.getElementById('btn-schedule').disabled = true;
         
         try {
@@ -242,20 +410,20 @@
                 document.getElementById('btn-schedule').disabled = false;
             }
         } catch (e) {
-            alert('請求失敗');
+            alert('啟動排程失敗！');
             document.getElementById('btn-schedule').disabled = false;
         }
     }
 
     async function closeApp() {
-        if (!confirm('確定要關閉整個搶購程式與瀏覽器嗎？')) return;
+        if (!confirm('確定要關閉搶購小幫手與瀏覽器嗎？')) return;
         
         try {
             await fetch('/api/close', { method: 'POST' });
             document.getElementById('status-text').innerText = "程式已關閉。";
-            document.body.innerHTML = "<h2 style='text-align:center; margin-top:20vh; color:#ef4444;'>程式已關閉，您可以關閉此網頁視窗。</h2>";
+            document.body.innerHTML = "<h2 style='text-align:center; margin-top:20vh; color:#ef4444;'>搶購程式已完全關閉，您可以關閉此瀏覽器分頁。</h2>";
         } catch (e) {
-            alert('請求失敗');
+            alert('關閉請求失敗');
         }
     }
 

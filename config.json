@@ -1,4 +1,7 @@
 {
     "url": "https://24h.pchome.com.tw/prod/DGCQ39-A900KGPES?fq=/S/DGCQ6U",
-    "time": "16:00:00"
+    "time": "16:00:00",
+    "multi_prod_ids": "DGCQ39-A900KGPES;DGCQ39-A900KGPEK",
+    "multi_time": "16:00:00",
+    "mode": "multi"
 }

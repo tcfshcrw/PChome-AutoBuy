@@ -20,7 +20,10 @@ app_state = {
     "is_browser_open": False,
     "is_scheduling": False,
     "target_time": "12:00:00",
-    "target_url": ""
+    "target_url": "",
+    "multi_prod_ids": "",
+    "multi_time": "12:00:00",
+    "mode": "multi"
 }
 
 def load_config():
@@ -30,10 +33,18 @@ def load_config():
     except Exception:
         return {}
 
-def save_config(url, time_str):
+def save_config(url=None, time_str=None, multi_prod_ids=None, multi_time=None, mode=None):
     config_data = load_config()
-    config_data["url"] = url
-    config_data["time"] = time_str
+    if url is not None:
+        config_data["url"] = url
+    if time_str is not None:
+        config_data["time"] = time_str
+    if multi_prod_ids is not None:
+        config_data["multi_prod_ids"] = multi_prod_ids
+    if multi_time is not None:
+        config_data["multi_time"] = multi_time
+    if mode is not None:
+        config_data["mode"] = mode
     try:
         with open(config_path, "w", encoding="utf-8") as f:
             json.dump(config_data, f, ensure_ascii=False, indent=4)
@@ -43,10 +54,20 @@ def save_config(url, time_str):
 config = load_config()
 app_state["target_url"] = config.get("url", "")
 app_state["target_time"] = config.get("time", "12:00:00")
+app_state["multi_prod_ids"] = config.get("multi_prod_ids", "")
+app_state["multi_time"] = config.get("multi_time", "12:00:00")
+app_state["mode"] = config.get("mode", "multi")
 
 @app.route('/')
 def index():
-    return render_template('index.html', url=app_state["target_url"], time=app_state["target_time"])
+    return render_template(
+        'index.html',
+        url=app_state["target_url"],
+        time=app_state["target_time"],
+        multi_prod_ids=app_state["multi_prod_ids"],
+        multi_time=app_state["multi_time"],
+        mode=app_state["mode"]
+    )
 
 @app.route('/api/open_browser', methods=['POST'])
 def open_browser():
@@ -71,23 +92,24 @@ def start_schedule():
     if not app_state["is_browser_open"]:
         return jsonify({"success": False, "message": "請先開啟瀏覽器並登入"})
     if app_state["is_scheduling"]:
-        return jsonify({"success": False, "message": "已經在排程中了"})
+        return jsonify({"success": False, "message": "目前有其他搶購或結帳任務正在進行中"})
 
-    data = request.json
+    data = request.json or {}
     target_url = data.get("url", "").strip()
     target_time_str = data.get("time", "").strip()
     
     if not target_url:
-        return jsonify({"success": False, "message": "請輸入商品網址"})
+        return jsonify({"success": False, "message": "請輸入商品網址或商品 ID"})
     
     try:
         datetime.strptime(target_time_str, "%H:%M:%S")
     except ValueError:
         return jsonify({"success": False, "message": "時間格式錯誤！請輸入 HH:MM:SS"})
 
-    save_config(target_url, target_time_str)
+    save_config(url=target_url, time_str=target_time_str, mode="schedule")
     app_state["target_url"] = target_url
     app_state["target_time"] = target_time_str
+    app_state["mode"] = "schedule"
     app_state["is_scheduling"] = True
 
     def schedule_task():
@@ -103,14 +125,60 @@ def start_schedule():
         
         app_state["status"] = "時間到！開始狂刷 API 搶購"
         try:
-            pchome_autobuy.start_sniping(target_url)
-            app_state["status"] = "搶購程序結束。"
+            pchome_autobuy.start_sniping(target_url, is_gui=True)
+            app_state["status"] = "搶購結帳程序已完成！"
         except Exception as e:
             app_state["status"] = f"搶購發生錯誤：{str(e)}"
         finally:
             app_state["is_scheduling"] = False
 
     threading.Thread(target=schedule_task, daemon=True).start()
+    return jsonify({"success": True})
+
+@app.route('/api/start_multi_checkout', methods=['POST'])
+def start_multi_checkout():
+    if not app_state["is_browser_open"]:
+        return jsonify({"success": False, "message": "請先開啟瀏覽器並登入"})
+    if app_state["is_scheduling"]:
+        return jsonify({"success": False, "message": "目前有其他搶購或結帳任務正在進行中"})
+
+    data = request.json or {}
+    prod_ids = data.get("prod_ids", "").strip()
+    multi_time_str = data.get("time", "").strip()
+    
+    if not prod_ids:
+        return jsonify({"success": False, "message": "請輸入商品 ID（多筆請以分號 ';' 分隔）"})
+
+    if multi_time_str:
+        try:
+            datetime.strptime(multi_time_str, "%H:%M:%S")
+        except ValueError:
+            return jsonify({"success": False, "message": "時間格式錯誤！請輸入 HH:MM:SS 或留空立即購買"})
+
+    save_config(multi_prod_ids=prod_ids, multi_time=multi_time_str, mode="multi")
+    app_state["multi_prod_ids"] = prod_ids
+    app_state["multi_time"] = multi_time_str
+    app_state["mode"] = "multi"
+    app_state["is_scheduling"] = True
+
+    def multi_task():
+        def update_status(msg):
+            app_state["status"] = msg
+
+        try:
+            pchome_autobuy.sniping_multiple_products(
+                prod_ids,
+                target_time_str=multi_time_str,
+                status_callback=update_status,
+                is_gui=True
+            )
+            app_state["status"] = "複數商品已確認開賣並全數加車完成結帳！"
+        except Exception as e:
+            app_state["status"] = f"搶購結帳發生錯誤：{str(e)}"
+        finally:
+            app_state["is_scheduling"] = False
+
+    threading.Thread(target=multi_task, daemon=True).start()
     return jsonify({"success": True})
 
 @app.route('/api/status', methods=['GET'])
