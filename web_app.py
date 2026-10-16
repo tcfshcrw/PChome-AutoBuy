@@ -8,6 +8,7 @@ from flask import Flask, render_template, request, jsonify
 import logging
 
 import pchome_autobuy
+from countdown import countdown_timer
 
 app = Flask(__name__)
 # 關閉 Flask 預設的日誌輸出以免干擾 cmd 畫面
@@ -113,18 +114,12 @@ def start_schedule():
     app_state["is_scheduling"] = True
 
     def schedule_task():
-        app_state["status"] = f"已排程！將於 {target_time_str} 開始監控"
-        while True:
-            now = datetime.now()
-            current_time_str = now.strftime("%H:%M:%S")
-            if current_time_str < target_time_str:
-                app_state["status"] = f"倒數中，目前時間 {current_time_str}"
-                time.sleep(0.5)
-            else:
-                break
-        
-        app_state["status"] = "時間到！開始狂刷 API 搶購"
+        def update_status(msg):
+            app_state["status"] = msg
+
         try:
+            countdown_timer(target_time_str, status_callback=update_status)
+            app_state["status"] = "時間到！開始狂刷 API 搶購"
             pchome_autobuy.start_sniping(target_url, is_gui=True)
             app_state["status"] = "搶購結帳程序已完成！"
         except Exception as e:

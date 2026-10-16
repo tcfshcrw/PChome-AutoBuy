@@ -5,9 +5,18 @@ import os
 import re
 import json
 import time
+import sys
 import random
 import requests
 import undetected_chromedriver as uc
+
+from countdown import countdown_timer
+
+if sys.stdout.encoding and sys.stdout.encoding.lower() not in ('utf-8', 'utf8'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
@@ -586,16 +595,7 @@ def sniping_multiple_products(prod_ids_input, target_time_str="", status_callbac
 
     # 1. 若有指定開賣時間，先進行倒數
     if target_time_str:
-        from datetime import datetime
-        print(f"-> 已設定開賣排程時間：{target_time_str}，開始倒數...")
-        while True:
-            current_time_str = datetime.now().strftime("%H:%M:%S")
-            if current_time_str < target_time_str:
-                if status_callback:
-                    status_callback(f"倒數中，目前時間 {current_time_str}（開賣目標：{target_time_str}）")
-                time.sleep(0.3)
-            else:
-                break
+        countdown_timer(target_time_str, status_callback=status_callback)
 
     # 2. 時間已到：高頻輪詢確認開賣（ForSale）
     print("-> 時間已到！開始高頻 API 輪詢監聽開賣狀態...")
@@ -688,12 +688,16 @@ def init_driver(chrome_path=""):
     print("-> 正在開啟 PChome 首頁，請在瀏覽器中【手動完成登入】...")
     driver.get("https://24h.pchome.com.tw/")
 
-def start_sniping(target_url, is_gui=False):
+def start_sniping(target_url, target_time_str="", status_callback=None, is_gui=False):
     global driver
     global URL
     if driver is None:
         print("請先啟動瀏覽器！")
         return
+
+    # 若有指定開賣排程時間，先進行動態區間倒數
+    if target_time_str:
+        countdown_timer(target_time_str, status_callback=status_callback)
         
     """
     抓取商品開賣資訊，並嘗試搶購
@@ -738,5 +742,6 @@ if __name__ == "__main__":
         target = input(f"請輸入欲搶購的商品網址或 ID (直接 Enter 使用預設 {URL}): ").strip()
         if not target:
             target = URL
+        time_input = input("請輸入開賣時間 (格式 HH:MM:SS，直接按 Enter 則立即開始監控): ").strip()
         input("👉 確認已登入並就緒，請按【Enter】開始監控開賣...")
-        start_sniping(target)
+        start_sniping(target, target_time_str=time_input)
