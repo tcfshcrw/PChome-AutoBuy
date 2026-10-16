@@ -47,12 +47,15 @@ def input_info(xpath, info):  # info = 個資
     elem.clear()
     elem.send_keys(info)
 
-def click_button(xpath):
-    WebDriverWait(driver, 20).until(
-        expected_conditions.element_to_be_clickable(
-            (By.XPATH, xpath))
+def click_button(xpath, timeout=20):
+    WebDriverWait(driver, timeout).until(
+        expected_conditions.presence_of_element_located((By.XPATH, xpath))
     )
-    driver.find_element(By.XPATH, xpath).click()
+    elem = driver.find_element(By.XPATH, xpath)
+    try:
+        elem.click()
+    except Exception:
+        driver.execute_script("arguments[0].click();", elem)
 
 def input_flow():
     """
@@ -103,34 +106,45 @@ xpaths = {
 
 def select_random_specs():
     """
-    若商品有規格選項（顏色、尺寸等），隨機選擇一個可用的規格
+    若商品有規格選項（顏色、尺寸等），隨機選擇一個可用的規格。
+    若無規格選項則直接跳過，絕不誤點付款/運送說明等其他項目。
     """
     try:
-        # 等待主要購買區按鈕載入
+        # 等待主要購買區按鈕載入，確保網頁主要區塊已就緒
         WebDriverWait(driver, 5).until(
             expected_conditions.presence_of_element_located((By.XPATH, xpaths['add_to_cart']))
         )
+
+        # 真正的商品規格清單，PChome 24h 使用 normal_specItems
+        # 且規格選項 li 帶有 c-detailCol__specItem--prodSpec
         spec_group_xpaths = [
             "//ul[@data-regression='normal_specItems']",
-            "//div[contains(@class, 'c-detailCol__spec')]//ul"
+            "//ul[contains(@class, 'c-detailCol__specList') and .//li[contains(@class, 'c-detailCol__specItem--prodSpec')]]"
         ]
-        selected_xpath = None
-        for sx in spec_group_xpaths:
-            if driver.find_elements(By.XPATH, sx):
-                selected_xpath = sx
-                break
 
-        if not selected_xpath:
+        spec_groups = []
+        for sx in spec_group_xpaths:
+            found = driver.find_elements(By.XPATH, sx)
+            if found:
+                # 確保裡面真的有 prodSpec 的按鈕，避免誤抓到付款/運送方式
+                valid_groups = []
+                for g in found:
+                    spec_btns = g.find_elements(By.XPATH, ".//li[contains(@class, 'c-detailCol__specItem--prodSpec')]//button")
+                    if spec_btns:
+                        valid_groups.append(g)
+                if valid_groups:
+                    spec_groups = valid_groups
+                    break
+
+        if not spec_groups:
+            print("-> 此商品無額外規格選項或已選定預設規格，直接進行購買流程。")
             return
 
-        total_groups = len(driver.find_elements(By.XPATH, selected_xpath))
-        for group_idx in range(total_groups):
-            groups = driver.find_elements(By.XPATH, selected_xpath)
-            if group_idx >= len(groups):
-                break
-            group = groups[group_idx]
+        for group_idx, group in enumerate(spec_groups):
+            buttons = group.find_elements(By.XPATH, ".//li[contains(@class, 'c-detailCol__specItem--prodSpec')]//button[not(@disabled)]")
+            if not buttons:
+                buttons = group.find_elements(By.XPATH, ".//button[not(@disabled)]")
 
-            buttons = group.find_elements(By.XPATH, ".//button[not(@disabled)]")
             available_buttons = []
             for btn in buttons:
                 btn_class = btn.get_attribute("class") or ""
@@ -149,8 +163,116 @@ def select_random_specs():
                 print(f"-> 偵測到規格選項（第 {group_idx + 1} 組），隨機選取規格：【{chosen_text}】")
                 driver.execute_script("arguments[0].click();", chosen)
                 time.sleep(0.5)
+            else:
+                print(f"-> 規格群組（第 {group_idx + 1} 組）暫無可選規格。")
     except Exception as e:
         print(f"-> 規格選取檢查略過：{e}")
+
+def handle_confirm_dialog():
+    """
+    極速關閉或確認可能跳出的提示訊息對話框（如：訂單不受24小時到貨時間限制等）
+    使用純 JS 在瀏覽器端毫秒級執行，不進行昂貴的 Python-Selenium 遠端遍歷
+    """
+    js_code = """
+    try {
+        var buttons = document.querySelectorAll('button, a, input[type="button"], input[type="submit"]');
+        for (var i = 0; i < buttons.length; i++) {
+            var b = buttons[i];
+            if (b.offsetParent !== null) {
+                var txt = (b.textContent || b.value || '').trim();
+                if (txt === '確定' || txt === '我知道了' || txt === '同意') {
+                    b.click();
+                    return 'CONFIRMED';
+                }
+            }
+        }
+        var closeBtn = document.querySelector('button.close, [aria-label="Close"], [aria-label="關閉"]');
+        if (closeBtn && closeBtn.offsetParent !== null) {
+            closeBtn.click();
+            return 'CLOSED';
+        }
+    } catch(e) {}
+    return 'NONE';
+    """
+    try:
+        res = driver.execute_script(js_code)
+        if res in ('CONFIRMED', 'CLOSED'):
+            print(f"-> 偵測到到貨限制/提示視窗，已自動處理關閉 ({res})。")
+            return True
+    except Exception:
+        pass
+    return False
+
+def select_cash_on_delivery():
+    """
+    以原生 JavaScript 極速偵測並切換「其他付款方式」➔「貨到付款」
+    耗時由數秒縮減至 0.1~0.2 秒以內
+    """
+    js_select_cod = """
+    // 1. 檢查下拉選單 select
+    var selects = document.querySelectorAll('select');
+    for (var i = 0; i < selects.length; i++) {
+        var opts = selects[i].options;
+        for (var j = 0; j < opts.length; j++) {
+            if (opts[j].text.indexOf('貨到付款') !== -1) {
+                if (selects[i].selectedIndex !== j) {
+                    selects[i].selectedIndex = j;
+                    selects[i].dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                return 'COD_SELECT_DONE';
+            }
+        }
+    }
+
+    // 2. 檢查單選框 radio 是否已有貨到付款
+    var radios = document.querySelectorAll('input[type="radio"]');
+    for (var i = 0; i < radios.length; i++) {
+        var r = radios[i];
+        var val = ((r.value || '') + (r.id || '') + (r.name || '')).toUpperCase();
+        if (val.indexOf('COD') !== -1) {
+            if (!r.checked) {
+                r.click();
+            }
+            return 'COD_RADIO_DONE';
+        }
+    }
+
+    // 3. 檢查文字包含「貨到付款」的可見元素
+    var candidates = document.querySelectorAll('label, button, span, li, div');
+    for (var i = 0; i < candidates.length; i++) {
+        var el = candidates[i];
+        if (el.children.length <= 2 && el.textContent.indexOf('貨到付款') !== -1 && el.offsetParent !== null) {
+            el.click();
+            return 'COD_CLICK_DONE';
+        }
+    }
+
+    // 4. 若尚未找到貨到付款，尋找並展開「其他付款方式」
+    for (var i = 0; i < candidates.length; i++) {
+        var el = candidates[i];
+        if (el.children.length <= 2 && el.textContent.indexOf('其他付款方式') !== -1 && el.offsetParent !== null) {
+            el.click();
+            return 'NEED_EXPAND_OTHER';
+        }
+    }
+
+    return 'NOT_FOUND';
+    """
+    try:
+        status = driver.execute_script(js_select_cod)
+        if status in ('COD_SELECT_DONE', 'COD_RADIO_DONE', 'COD_CLICK_DONE'):
+            print("-> 付款方式已確認為【貨到付款】。")
+            return True
+        elif status == 'NEED_EXPAND_OTHER':
+            print("-> 點擊展開【其他付款方式】...")
+            time.sleep(0.15)  # 極短等待子選單渲染
+            status2 = driver.execute_script(js_select_cod)
+            if status2 in ('COD_SELECT_DONE', 'COD_RADIO_DONE', 'COD_CLICK_DONE'):
+                print("-> 成功切換付款方式為【貨到付款】！")
+                return True
+    except Exception as e:
+        print(f"-> 快速付款檢查略過: {e}")
+    return False
 
 def main():
     print("-> 準備前往商品頁面...")
@@ -167,23 +289,31 @@ def main():
     print("-> 準備點擊放入購物車...")
     click_button(xpaths['add_to_cart'])
     
-    # 點擊後等待 2 秒，讓網頁有時間將商品真正加入伺服器購物車，避免跳轉太快導致購物車是空的
-    time.sleep(2)
+    # 智慧等待購物車數量更新（最多等 2 秒）
+    cart_added = False
+    for _ in range(5):
+        time.sleep(0.3)
+        try:
+            badges = driver.find_elements(By.XPATH, "//div[@data-regression='header_cartNum']//div")
+            if badges and badges[0].text.strip() not in ("", "0"):
+                cart_added = True
+                print(f"-> 商品成功加入購物車 (購物車數量: {badges[0].text.strip()})")
+                break
+        except Exception:
+            pass
+    if not cart_added:
+        try:
+            cart_btn = driver.find_element(By.XPATH, xpaths['add_to_cart'])
+            driver.execute_script("arguments[0].click();", cart_btn)
+            time.sleep(0.5)
+        except Exception:
+            pass
 
     """
     前往購物車
     """
     print("-> 準備前往購物車結帳頁面...")
     driver.get("https://ecssl.pchome.com.tw/sys/cflow/fsindex/BigCar/BIGCAR/ItemList")
-
-    """
-    登入帳戶（若有使用 CHROME_PATH 記住登入資訊，第二次執行時可註解掉）
-    """
-    # try:
-    #     print("-> 準備嘗試登入帳戶...")
-    #     login()
-    # except:
-    #     print('Already Logged in!')
 
     """
     前往結帳 (要使用 JS 的方式 execute_script 點擊)
@@ -193,15 +323,37 @@ def main():
         # 步驟一：購物車頁面的「結帳」按鈕
         step1_xpath = "//button[@data-regression='step1-checkout-btn']"
         WebDriverWait(driver, 20).until(
-            expected_conditions.element_to_be_clickable((By.XPATH, step1_xpath))
+            expected_conditions.presence_of_element_located((By.XPATH, step1_xpath))
         )
+
+        # 快速關閉可能已出現的彈窗
+        handle_confirm_dialog()
+
         button_step1 = driver.find_element(By.XPATH, step1_xpath)
         driver.execute_script("arguments[0].click();", button_step1)
-        print("-> 成功進入結帳畫面，準備送出訂單 (步驟 2/2)...")
-        
-        # 步驟二：結帳頁面的「確認送出」按鈕
+        print("-> 成功點擊前往結帳 (步驟 1/2)，正在前往結帳畫面...")
+
+        # 點擊步驟一後，高頻監聽彈窗或步驟二出現（0.1 秒極速輪詢）
         step2_xpath = "//button[@data-regression='step2-checkout-btn']"
-        WebDriverWait(driver, 20).until(
+        for _ in range(40):  # 最多等 4 秒
+            handle_confirm_dialog()
+            if driver.find_elements(By.XPATH, step2_xpath):
+                break
+            time.sleep(0.1)
+
+        WebDriverWait(driver, 10).until(
+            expected_conditions.presence_of_element_located((By.XPATH, step2_xpath))
+        )
+        print("-> 成功進入結帳畫面 (步驟 2/2)...")
+
+        # 毫秒級執行：自動選取「其他付款方式」->「貨到付款」
+        select_cash_on_delivery()
+
+        # 再次極速關閉可能出現的彈窗
+        handle_confirm_dialog()
+
+        # 等待按鈕可被點擊並送出訂單
+        WebDriverWait(driver, 5).until(
             expected_conditions.element_to_be_clickable((By.XPATH, step2_xpath))
         )
         button_step2 = driver.find_element(By.XPATH, step2_xpath)
@@ -209,7 +361,24 @@ def main():
         print("-> 成功點擊最後送出結帳按鈕！")
         
     except Exception as e:
-        print("-> [錯誤] 找不到結帳按鈕！正在儲存目前網頁結構以供分析...")
+        curr_url = driver.current_url
+        if "login" in curr_url.lower():
+            print("-> [提醒] 尚未登入 PChome 帳號！請在開啟的瀏覽器中完成登入後手動結帳。")
+        else:
+            print("-> [錯誤] 找不到結帳按鈕！正在儲存目前網頁結構以供分析...")
+        with open("error_cart.html", "w", encoding="utf-8") as f:
+            f.write(driver.page_source)
+        print("-> 網頁結構已儲存為 error_cart.html。您可以手動接手後續的結帳動作！")
+        # 暫停讓使用者接手
+        input("請手動完成結帳，按 Enter 鍵結束程式...")
+        return
+        
+    except Exception as e:
+        curr_url = driver.current_url
+        if "login" in curr_url.lower():
+            print("-> [提醒] 尚未登入 PChome 帳號！請在開啟的瀏覽器中完成登入後手動結帳。")
+        else:
+            print("-> [錯誤] 找不到結帳按鈕！正在儲存目前網頁結構以供分析...")
         with open("error_cart.html", "w", encoding="utf-8") as f:
             f.write(driver.page_source)
         print("-> 網頁結構已儲存為 error_cart.html。您可以手動接手後續的結帳動作！")
@@ -265,9 +434,10 @@ def main():
 def init_driver(chrome_path=""):
     global driver
     """
-    設定 option 可讓 chrome 記住已登入帳戶
+    設定 option 可讓 chrome 記住已登入帳戶，並設定視窗大小為 600*1024
     """
     options = webdriver.ChromeOptions()  
+    options.add_argument("--window-size=600,1024")
     if chrome_path:
         options.add_argument(f"--user-data-dir={chrome_path}")  
 
@@ -281,12 +451,19 @@ def init_driver(chrome_path=""):
             print(f"-> 偵測到您的 Chrome 版本為 {version_main}，自動修正啟動...")
             
             options2 = webdriver.ChromeOptions()
+            options2.add_argument("--window-size=600,1024")
             if chrome_path:
                 options2.add_argument(f"--user-data-dir={chrome_path}")
             
             driver = uc.Chrome(options=options2, version_main=version_main)
         else:
             raise e
+
+    try:
+        driver.set_window_size(600, 1024)
+    except Exception:
+        pass
+
     driver.set_page_load_timeout(120)
     print("-> 正在開啟 PChome 首頁，請在瀏覽器中【手動完成登入】...")
     driver.get("https://24h.pchome.com.tw/")
